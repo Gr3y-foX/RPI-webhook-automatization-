@@ -233,7 +233,124 @@ This is beyond the scope of this basic manual, but the general idea is to set up
 
 ---
 
-### 10. Quick Summary
+### 10. Running in Background as a Daemon (systemd)
+
+Below is an example of how to run the **Flask server** and **ngrok** as systemd services so that they automatically start on Raspberry Pi boot.
+
+> **Important:** adjust paths and user (`pi`) to your system if you use a different user or directories.
+
+#### 10.1. Daemon for Flask (`flask-pi.py`)
+
+We assume that:
+
+- project is in `/home/pi/webhook-server`
+- virtual environment: `/home/pi/webhook-server/venv`
+- script: `/home/pi/webhook-server/flask-pi.py`
+
+1. Create a unit file:
+
+```bash
+sudo nano /etc/systemd/system/webhook-flask.service
+```
+
+2. Insert the following content:
+
+```ini
+[Unit]
+Description=GitHub webhook Flask server
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/webhook-server
+Environment="PATH=/home/pi/webhook-server/venv/bin"
+ExecStart=/home/pi/webhook-server/venv/bin/python flask-pi.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. Reload systemd configuration and enable the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable webhook-flask.service
+sudo systemctl start webhook-flask.service
+```
+
+4. Check the status:
+
+```bash
+sudo systemctl status webhook-flask.service
+```
+
+Logs can be viewed using:
+
+```bash
+journalctl -u webhook-flask.service -f
+```
+
+---
+
+#### 10.2. Daemon for ngrok (port 5000)
+
+1. Create a unit file:
+
+```bash
+sudo nano /etc/systemd/system/ngrok-http-5000.service
+```
+
+2. Insert the following content:
+
+```ini
+[Unit]
+Description=ngrok tunnel for Flask webhook (port 5000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+ExecStart=/usr/local/bin/ngrok http 5000
+Restart=always
+RestartSec=5
+Environment=NGROK_CONFIG=/home/pi/.config/ngrok/ngrok.yml
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Make sure that:
+
+- `ngrok` binary is actually located at `/usr/local/bin/ngrok`
+- ngrok config with your `authtoken` is stored at `/home/pi/.config/ngrok/ngrok.yml`
+
+3. Reload systemd configuration and enable the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ngrok-http-5000.service
+sudo systemctl start ngrok-http-5000.service
+```
+
+4. Check the status:
+
+```bash
+sudo systemctl status ngrok-http-5000.service
+```
+
+Logs:
+
+```bash
+journalctl -u ngrok-http-5000.service -f
+```
+
+> **Reminder:** if you have a free ngrok account, the URL will change on each new tunnel start/restart, even via systemd. Don't forget to update the address in GitHub Webhook when it changes.
+
+---
+
+### 11. Quick Summary
 
 - **Flask server** (`flask-pi.py`) listens on `0.0.0.0:5000` and handles `POST /webhook`.
 - **ngrok** forwards a public `https` address to `http://localhost:5000`.
